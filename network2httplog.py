@@ -39,7 +39,7 @@ def get_filter(ports):
     return FILTER_TEMPLATE.format(' or port '.join(str(c) for c in ports))
 
 
-def generate_logger_function(output=stdout, header=True, forceflush=False):
+def generate_logger_function(output=stdout, header=True, referer=False, forceflush=False):
     """Logger function to pass into sniffer or use with the
     pcap reader
 
@@ -56,6 +56,11 @@ def generate_logger_function(output=stdout, header=True, forceflush=False):
             if forceflush:
                 output.flush()
 
+    if referer:
+        global LOG_HEADER, LOG_LINE
+        LOG_HEADER = LOG_HEADER.strip() + " \"Referrer\"\n"
+        LOG_LINE = LOG_LINE.strip() + " \"{referer}\"\n"
+
     if not hasattr(output, 'write'):
         raise InvalidOutput()
 
@@ -71,10 +76,10 @@ def contains_header(packet):
 
     packet - a scapy packet"""
 
-    if packet.haslayer("TCP"):
-        payload = str(packet["TCP"].payload)
+    if packet.haslayer("TCP") and packet["TCP"].haslayer("Raw"):
+        payload = packet["TCP"]["Raw"].fields["load"]
         for method in METHODS:
-            if payload.find(method, 0, len(method)) >= 0:
+            if payload.startswith(method):
                 return True
     return False
 
@@ -91,6 +96,7 @@ def parse_http_header(packet):
         return False
     lines = str(packet["TCP"].payload).split('\n')
     packet_data = {'method': 'UNKNOWN',
+                   'referer': '',
                    'host': packet["IP"].dst}
 
     method_line = lines[0]
@@ -109,15 +115,16 @@ def parse_http_header(packet):
             break
 
     for line in lines[1:]:
-        if line[:4].lower() == "host":
+        if line.lower().startswith("host"):
             packet_data['host'] = line[6:].strip()
+        if line.lower().startswith("referer") or line.lower().startswith("referrer"):
+            packet_data['referer'] = " ".join(line.split(" ")[1:]).strip()
 
     packet_data['size'] = '-'
     packet_data['client'] = packet["IP"].src
     packet_data['timestamp'] = datetime.fromtimestamp(packet.time).isoformat()
 
     return packet_data
-
 
 def main():
 
@@ -135,14 +142,19 @@ def main():
     parser.add_option("-F", "--forceflush", dest="forceflush",
                       default=False, action="store_true",
                       help="Force output flush after each log entry.")
+    parser.add_option("-R", "--referer", dest="referer", default=False,
+                      action="store_true",
+                      help="Include referer in log output")
 
     (options, _) = parser.parse_args()
 
     if options.output:
         logger = generate_logger_function(open(options.output, 'wb'),
+                                          referer = options.referer,
                                           forceflush=options.forceflush)
     else:
-        logger = generate_logger_function(forceflush=options.forceflush)
+        logger = generate_logger_function(referer = options.referer,
+                                          forceflush=options.forceflush)
 
     if options.filter:
         packet_filter = get_filter(int(n) for n in options.filter.split(','))
