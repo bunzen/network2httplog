@@ -27,7 +27,7 @@ FILTER_TEMPLATE = 'tcp and (port {0})'
 LOG_HEADER = '#Client [timestamp] Host "Method URI" Type Size\n'
 LOG_LINE = '{client} [{timestamp}] {host} "{method} {uri}" {type} {size}\n'
 
-METHODS = [b'GET', b'POST', b'CONNECT', b'PUT']
+METHODS = [b'GET', b'POST', b'CONNECT', b'PUT', b'HEAD', b'CHECKOUT', b'SHOWMETHOD', b'DELETE', b'LINK', b'UNLINK', b'CHECKIN', b'TEXTSEARCH', b'SPACEJUMP', b'SEARCH']
 
 def get_filter(ports):
     """Creates a string used as filter in sniffer mode
@@ -103,25 +103,25 @@ def parse_http_header(packet):
     method_line = lines[0]
     for method in METHODS:
         if method_line.startswith(method):
-            packet_data['method'] = method
+            packet_data['method'] = str(method, "utf-8")
             rest = method_line[len(method):].strip().split()
             try:
-                packet_data['uri'] = rest[0]
+                packet_data['uri'] = str(rest[0], "utf-8")
             except IndexError:
                 packet_data['uri'] = 'UNKNOWN'
             try:
-                packet_data['type'] = rest[1]
+                packet_data['type'] = str(rest[1], "utf-8")
             except IndexError:
                 packet_data['type'] = 'UNKNOWN'
             break
 
     for line in lines[1:]:
         if line.lower().startswith(b"host"):
-            packet_data['host'] = line[6:].strip()
+            packet_data['host'] = str(line[6:].strip(), "utf-8")
         if line.lower().startswith(b"referer") or line.lower().startswith(b"referrer"):
-            packet_data['referer'] = b" ".join(line.split(b" ")[1:]).strip()
+            packet_data['referer'] = str(b" ".join(line.split(b" ")[1:]).strip(), "utf-8")
 
-    packet_data['size'] = b'-'
+    packet_data['size'] = '-'
     packet_data['client'] = packet["IP"].src
     packet_data['timestamp'] = datetime.fromtimestamp(packet.time).isoformat()
 
@@ -151,10 +151,10 @@ def main():
 
     if options.output:
         logger = generate_logger_function(open(options.output, 'wb'),
-                                          referer = options.referer,
+                                          referer=options.referer,
                                           forceflush=options.forceflush)
     else:
-        logger = generate_logger_function(referer = options.referer,
+        logger = generate_logger_function(referer=options.referer,
                                           forceflush=options.forceflush)
 
     if options.filter:
