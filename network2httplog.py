@@ -52,7 +52,7 @@ def generate_logger_function(output=stdout, header=True, referer=False, forceflu
     def logger(packet):
         parsed_header = parse_http_header(packet)
         if parsed_header:
-            output.write(LOG_LINE.format(**parsed_header).encode('utf-8'))
+            output.write(LOG_LINE.format(**parsed_header))
             if forceflush:
                 output.flush()
 
@@ -65,7 +65,7 @@ def generate_logger_function(output=stdout, header=True, referer=False, forceflu
         raise InvalidOutput()
 
     if header:
-        output.write(LOG_HEADER.encode('utf-8'))
+        output.write(LOG_HEADER)
     return logger
 
 
