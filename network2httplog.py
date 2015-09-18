@@ -25,9 +25,15 @@ DEFAULT_PORTS = [80, 8080, 3128]
 FILTER_TEMPLATE = 'tcp and (port {0})'
 
 LOG_HEADER = '#Client [timestamp] Host "Method URI" Type Size\n'
-LOG_LINE = '{client} [{timestamp}] {host} "{method} {uri}" {type} {size}\n'
+LOG_LINE = '{client} [{time}] {host} "{method} {uri}" {type} {size}\n'
+SQUID_LOG = '{timestamp:.0f} 1 {client} TCP_MISS/200 {bytes} {method} http://{host}{uri} - DIRECT/{dst} {content-type}\n'
 
-METHODS = [b'GET', b'POST', b'CONNECT', b'PUT', b'HEAD', b'CHECKOUT', b'SHOWMETHOD', b'DELETE', b'LINK', b'UNLINK', b'CHECKIN', b'TEXTSEARCH', b'SPACEJUMP', b'SEARCH']
+METHODS = [b'GET', b'POST', b'CONNECT',
+           b'PUT', b'HEAD', b'CHECKOUT',
+           b'SHOWMETHOD', b'DELETE', b'LINK',
+           b'UNLINK', b'CHECKIN',
+           b'TEXTSEARCH', b'SPACEJUMP',
+           b'SEARCH']
 
 def get_filter(ports):
     """Creates a string used as filter in sniffer mode
@@ -39,7 +45,11 @@ def get_filter(ports):
     return FILTER_TEMPLATE.format(' or port '.join(str(c) for c in ports))
 
 
-def generate_logger_function(output=stdout, header=True, referer=False, forceflush=False):
+def generate_logger_function(output=stdout,
+                             header=True,
+                             referer=False,
+                             squid=False,
+                             forceflush=False):
     """Logger function to pass into sniffer or use with the
     pcap reader
 
@@ -49,6 +59,8 @@ def generate_logger_function(output=stdout, header=True, referer=False, forceflu
     header - Boolean. Wether or not a header should be provided on create.
              Default is True"""
 
+    global LOG_HEADER, LOG_LINE
+
     def logger(packet):
         parsed_header = parse_http_header(packet)
         if parsed_header:
@@ -56,10 +68,12 @@ def generate_logger_function(output=stdout, header=True, referer=False, forceflu
             if forceflush:
                 output.flush()
 
-    if referer:
-        global LOG_HEADER, LOG_LINE
+    if referer and not squid:
         LOG_HEADER = LOG_HEADER.strip() + " \"Referrer\"\n"
         LOG_LINE = LOG_LINE.strip() + " \"{referer}\"\n"
+    elif squid:
+        LOG_HEADER = ""
+        LOG_LINE = SQUID_LOG
 
     if not hasattr(output, 'write'):
         raise InvalidOutput()
@@ -98,7 +112,10 @@ def parse_http_header(packet):
     lines = payload.split(b"\n")
     packet_data = {'method': 'UNKNOWN',
                    'referer': '',
-                   'host': packet["IP"].dst}
+                   'bytes': 1,
+                   'content-type': "-",
+                   'host': packet["IP"].dst,
+                   'dst': packet["IP"].dst}
 
     method_line = lines[0]
     for method in METHODS:
@@ -116,14 +133,24 @@ def parse_http_header(packet):
             break
 
     for line in lines[1:]:
-        if line.lower().startswith(b"host"):
+        line = line.lower()
+        if line.startswith(b"content-length"):
+            packet_data['bytes'] = str(line[16:].strip(), "utf-8")
+            continue
+        if line.startswith(b"content-type"):
+            packet_data['content-type'] = str(line[14:].strip(), "utf-8")
+            continue
+        if line.startswith(b"host"):
             packet_data['host'] = str(line[6:].strip(), "utf-8")
-        if line.lower().startswith(b"referer") or line.lower().startswith(b"referrer"):
+            continue
+        if line.startswith(b"referer") or line.lower().startswith(b"referrer"):
             packet_data['referer'] = str(b" ".join(line.split(b" ")[1:]).strip(), "utf-8")
+            continue
 
-    packet_data['size'] = '-'
+    packet_data['size'] = 1
     packet_data['client'] = packet["IP"].src
-    packet_data['timestamp'] = datetime.fromtimestamp(packet.time).isoformat()
+    packet_data['time'] = datetime.fromtimestamp(packet.time).isoformat()
+    packet_data['timestamp'] = packet.time
 
     return packet_data
 
@@ -146,15 +173,20 @@ def main():
     parser.add_option("-R", "--referer", dest="referer", default=False,
                       action="store_true",
                       help="Include referer in log output")
+    parser.add_option("-S", "--squid", dest="squid", default=False,
+                      action="store_true",
+                      help="Output in Squid default log format")
 
     (options, _) = parser.parse_args()
 
     if options.output:
         logger = generate_logger_function(open(options.output, 'wb'),
                                           referer=options.referer,
+                                          squid=options.squid,
                                           forceflush=options.forceflush)
     else:
         logger = generate_logger_function(referer=options.referer,
+                                          squid=options.squid,
                                           forceflush=options.forceflush)
 
     if options.filter:
@@ -163,7 +195,11 @@ def main():
         packet_filter = get_filter(DEFAULT_PORTS)
 
 
-    sniff(iface=options.interface, filter=packet_filter, store=0, offline=options.input, prn=logger)
+    sniff(iface=options.interface,
+          filter=packet_filter,
+          store=0,
+          offline=options.input,
+          prn=logger)
 
 class InvalidOutput(Exception):
 
