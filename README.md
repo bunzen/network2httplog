@@ -1,9 +1,16 @@
 # network2httplog
-pcap to proxy-like log
+##pcap to proxy-like log
 
-dependency: scapy
+##dependency: scapy
 
  $ pip install Scapy
+
+##Example
+
+ $ network2httplog.py --squid -r ~/Desktop/dump.pcap | ./calamaris -a
+
+
+## Usage
 
     Usage: network2httplog.py [options]
 
