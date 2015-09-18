@@ -27,7 +27,7 @@ FILTER_TEMPLATE = 'tcp and (port {0})'
 LOG_HEADER = '#Client [timestamp] Host "Method URI" Type Size\n'
 LOG_LINE = '{client} [{timestamp}] {host} "{method} {uri}" {type} {size}\n'
 
-METHODS = ['GET', 'POST', 'CONNECT', 'PUT']
+METHODS = [b'GET', b'POST', b'CONNECT', b'PUT']
 
 def get_filter(ports):
     """Creates a string used as filter in sniffer mode
@@ -52,7 +52,7 @@ def generate_logger_function(output=stdout, header=True, referer=False, forceflu
     def logger(packet):
         parsed_header = parse_http_header(packet)
         if parsed_header:
-            output.write(LOG_LINE.format(**parsed_header))
+            output.write(LOG_LINE.format(**parsed_header).encode('utf-8'))
             if forceflush:
                 output.flush()
 
@@ -65,7 +65,7 @@ def generate_logger_function(output=stdout, header=True, referer=False, forceflu
         raise InvalidOutput()
 
     if header:
-        output.write(LOG_HEADER)
+        output.write(LOG_HEADER.encode('utf-8'))
     return logger
 
 
@@ -94,14 +94,15 @@ def parse_http_header(packet):
 
     if not contains_header(packet):
         return False
-    lines = str(packet["TCP"].payload).split('\n')
+    payload = packet["TCP"]["Raw"].fields["load"]
+    lines = payload.split(b"\n")
     packet_data = {'method': 'UNKNOWN',
                    'referer': '',
                    'host': packet["IP"].dst}
 
     method_line = lines[0]
     for method in METHODS:
-        if method_line.find(method, 0, len(method)) >= 0:
+        if method_line.startswith(method):
             packet_data['method'] = method
             rest = method_line[len(method):].strip().split()
             try:
@@ -115,12 +116,12 @@ def parse_http_header(packet):
             break
 
     for line in lines[1:]:
-        if line.lower().startswith("host"):
+        if line.lower().startswith(b"host"):
             packet_data['host'] = line[6:].strip()
-        if line.lower().startswith("referer") or line.lower().startswith("referrer"):
-            packet_data['referer'] = " ".join(line.split(" ")[1:]).strip()
+        if line.lower().startswith(b"referer") or line.lower().startswith(b"referrer"):
+            packet_data['referer'] = b" ".join(line.split(b" ")[1:]).strip()
 
-    packet_data['size'] = '-'
+    packet_data['size'] = b'-'
     packet_data['client'] = packet["IP"].src
     packet_data['timestamp'] = datetime.fromtimestamp(packet.time).isoformat()
 
