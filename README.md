@@ -26,4 +26,4 @@
                             LIST of ports to listen on. Default: 80,3128,8080
       -F, --forceflush      Force output flush after each log entry.
       -R, --referer         Include referer in log output
-
+      -S, --squid           Output in Squid default log format
