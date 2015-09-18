@@ -164,11 +164,11 @@ def main():
 
     sniff(iface=options.interface, filter=packet_filter, store=0, offline=options.input, prn=logger)
 
-class InvalidOutput(StandardError):
+class InvalidOutput(Exception):
 
     def __init__(self):
 
-        StandardError.__init__(self, "Invalid output object, must provide .write() method")
+        Exception.__init__(self, "Invalid output object, must provide .write() method")
 
 if __name__ == '__main__':
     main()
