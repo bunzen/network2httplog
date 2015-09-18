@@ -1,6 +1,10 @@
 # network2httplog
 pcap to proxy-like log
 
+dependency: scapy
+
+ $ pip install Scapy
+
     Usage: network2httplog.py [options]
 
     Options:
